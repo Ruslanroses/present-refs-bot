@@ -1,0 +1,63 @@
+name: Daily Presentation Refs
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    inputs:
+      target_chat_id:
+        description: 'Отправить только этому chat_id (пусто = всем подписчикам)'
+        required: false
+        default: ''
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install httpx
+      - name: Compute 3-day cache bucket
+        id: cache_bucket
+        run: echo "key=channels-cache-$(( $(date +%s) / 259200 ))" >> $GITHUB_OUTPUT
+      - name: Restore channels cache
+        uses: actions/cache@v4
+        with:
+          path: channels_cache.json
+          key: ${{ steps.cache_bucket.outputs.key }}
+          restore-keys: channels-cache-
+      - name: Restore seen_ids
+        uses: actions/cache@v4
+        with:
+          path: seen_*.json
+          key: seen-ids-${{ github.run_id }}
+          restore-keys: seen-ids-
+      - name: Run bot
+        env:
+          ARENA_TOKEN: ${{ secrets.ARENA_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SUBSCRIBERS: ${{ secrets.SUBSCRIBERS }}
+          DAILY_MIN: 20
+          DAILY_MAX: 40
+          BOT_NAME: ArenaPresent
+          DEFAULT_SLUGS: ${{ secrets.DEFAULT_SLUGS }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          TARGET_CHAT_ID: ${{ github.event.inputs.target_chat_id }}
+        run: python arena_refs_bot.py
+      - name: Save seen_ids
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: seen_*.json
+          key: seen-ids-${{ github.run_id }}
+      - name: Save channels cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: channels_cache.json
+          key: ${{ steps.cache_bucket.outputs.key }}
